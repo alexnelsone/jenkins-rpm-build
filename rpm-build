@@ -1,0 +1,70 @@
+# Just to make sure there is no rpmbuild residue.
+rm -rf BUILD RPMS SOURCES SPECS SRPMS tmpbuild
+
+# Let's grab some info from the spec file so that we can customize the rpm build for ANY project
+# Grab the value that is in Name:
+prog_name=`grep Name: *.spec  | tr -d ' '`
+
+# Grab the value that is in Version. Eventually version should be automated.
+prog_ver=`grep Version: *.spec  | tr -d ' '`
+
+# Join the Name and Version to get something to use for packaging.
+file_name=${prog_name##*:}-${prog_ver##*:}
+
+# grab the spec file name
+spec_file_name=`find . -maxdepth 1 -type f \( -iname "*.spec" \) | sed -r 's/^.{2}//'`
+
+#run RPMlint to check the spec file
+/usr/bin/rpmlint $spec_file_name
+
+# Append the build number to the version in the SPEC file.
+sed -i "s/BUILDNUMBER/$BUILD_NUMBER/g" $WORKSPACE/${spec_file_name}
+
+# Set the packager in formation in the SPEC file
+sed -i "s/PACKAGER/NAME_FOR_AUTOPACKER/g" $WORKSPACE/${spec_file_name}
+
+# Set some identifier to know how to find this package build in jenkins
+sed -i "s/BUILDTAG/$BUILD_TAG/g" $WORKSPACE/${spec_file_name}
+
+# Make the tar file of the files that need to be in the RPM. Exclude any common things we don't usually need. If some extra stuff goes into the
+# tar inadvertently it should be ok. the SPEC file should say where files go on the target box.
+# we don't want to tar up any unnecessary files. Only those that are going to be deployed. Here we are saying don't put any hidden, .spec or Makefile into the tar.
+
+echo "Creating tar file."
+mkdir ${file_name}
+cp -r `find . -maxdepth 1 -type f \( ! -iname ".*" ! -iname "Makefile" \)` ${file_name}
+tar czf ${file_name}.tar.gz ${file_name}
+rm -rf ${file_name}
+
+
+# Make sure the RPM build directories are cleaned out.
+# We do this by deleting them and then recreating them.
+for dir in BUILD RPMS SOURCES SPECS SRPMS
+do
+  [[ -d $dir ]] && rm -rf $dir
+   mkdir $dir
+done
+
+# we mv the spec file to the SPECS directory and the tar file to the SOURCES directory
+mv *.spec ./SPECS
+mv ${file_name}.tar.gz ./SOURCES
+
+# build the RPM
+/usr/bin/rpmbuild --define '_topdir '`pwd` --define '_tmppath '`pwd`/tmpbuild/ --define '_gpg_name GPGNAME' --define '_pass_phrase PASSPHRASE' -ba SPECS/${spec_file_name}
+
+
+#copy the RPMs to the root of the workspace to make them easy to find
+cp $WORKSPACE/SRPMS/*.src.rpm .
+cp $WORKSPACE/RPMS/x86_64/*.rpm .
+
+#clean up the workspace
+rm -rf BUILD RPMS SOURCES SPECS SRPMS tmpbuild
+
+#sign the RPM artifacts
+for rpmfile in `find . -maxdepth 1 -type f \( -iname "*.rpm" \)`
+do
+  echo $rpmfile
+  /usr/local/scripts/signrpm.exp $rpmfile
+  /bin/rpm -qipl $rpmfile
+done
+
