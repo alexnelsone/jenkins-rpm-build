@@ -54,8 +54,11 @@ mv ${file_name}.tar.gz ./SOURCES
 
 
 #copy the RPMs to the root of the workspace to make them easy to find
+# grab the name of the arch directory
+archdir=`find . -type d -maxdepth 1 | sed 's/[\.-.\\]//g' | sed -n '2p'`
+
 cp $WORKSPACE/SRPMS/*.src.rpm .
-cp $WORKSPACE/RPMS/x86_64/*.rpm .
+cp $WORKSPACE/RPMS${archdir}/*.rpm .
 
 #clean up the workspace
 rm -rf BUILD RPMS SOURCES SPECS SRPMS tmpbuild
